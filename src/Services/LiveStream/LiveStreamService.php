@@ -15,6 +15,7 @@ use Larapress\Profiles\Repository\Domain\IDomainRepository;
 use Larapress\Profiles\IProfileUser;
 use Illuminate\Support\Str;
 use Larapress\CRUD\Exceptions\AppException;
+use Larapress\ECommerce\Services\Cart\ICartService;
 
 class LiveStreamService implements ILiveStreamService
 {
@@ -107,18 +108,17 @@ class LiveStreamService implements ILiveStreamService
     public function canWatchLiveStream(Request $request)
     {
         $upstreamNameParts = explode('/', $request->headers->get('X-Original-URI'));
-        $upstreamName = $upstreamNameParts[count($upstreamNameParts)-1];
+        $upstreamName = $upstreamNameParts[count($upstreamNameParts) - 1];
         if (Str::endsWith($upstreamName, '.m3u8')) {
             $upstreamName = substr($upstreamName, 0, strlen($upstreamName) - strlen('.m3u8'));
             // inner variant files with format $name_xxxpxxxkbs
             if ($upstreamName === 'index') {
-                $upstreamName = $upstreamNameParts[count($upstreamNameParts)-2];
+                $upstreamName = $upstreamNameParts[count($upstreamNameParts) - 2];
                 $upstreamName = substr($upstreamName, 0, strrpos($upstreamName, '_'));
             }
         }
 
         $product = $this->getLiveStreamProduct($upstreamName);
-
 
         if (is_null($product)) {
             return false;
@@ -128,23 +128,12 @@ class LiveStreamService implements ILiveStreamService
             return true;
         }
 
-
         /** @var IProfileUser|ICRUDUser */
         $user = Auth::user();
-        /** @var IBankingService */
-        $repo = app(IBankingService::class);
+        /** @var ICartService */
+        $cartService = app(ICartService::class);
 
-        if (!is_null($user)) {
-            $freeForRoles = array_merge(
-                config('larapress.profiles.security.roles.super-role'),
-                config('larapress.profiles.security.roles.affiliate')
-            );
-            if ($user->hasRole($freeForRoles)) {
-                return true;
-            }
-        }
-
-        return $repo->isProductOnPurchasedList($user, $product);
+        return $cartService->isProductOnPurchasedList($user, $product);
     }
 
 
@@ -170,7 +159,12 @@ class LiveStreamService implements ILiveStreamService
                 ->where('data->types->livestream->key', $upstreamName)
                 ->first();
             if (!is_null($product)) {
-                Cache::tags(['product:'.$product->id])->put($cacheName, $product, Carbon::now()->addDay(1));
+                Cache::tags(['product:' . $product->id])
+                    ->put(
+                        $cacheName,
+                        $product,
+                        Carbon::now()->addDay(1)
+                    );
             }
         }
 
